@@ -31,6 +31,10 @@ open import Lib
       | 0 | 1 | ...          (entiers naturel)
 -}
 
+data valeur : Set where
+  estNat  : (n : ℕ)    → valeur
+  estBool : (b : Bool) → valeur
+
 {-
   b, e₁, e₂ ::=              (expressions)
               | v            (valeur)
@@ -38,12 +42,19 @@ open import Lib
               | ifte b e₁ e₂ (conditionnelle)
 -}
 
--- ex₁ = plus (val 1) (val 1)
+data exp : Set where
+  val  : (v : valeur)                  → exp
+  plus : (e₁ : exp)(e₂ : exp)          → exp
+  ifte : (b : exp)(e₁ : exp)(e₂ : exp) → exp
 
--- ex₂ = plus (val 2) (ifte (val true)
---                          (val 3)
---                          (plus (val 1) (val 7)))
+ex₁ : exp
+ex₁ = plus (val (estNat 1)) (val (estNat 1))
 
+ex₂ : exp
+ex₂ = plus (val (estNat 2))
+           (ifte (val (estBool true))
+                 (val (estNat 3))
+                 (plus (val (estNat 1)) (val (estNat 7))))
 
 -- --------------------------------
 -- Machine à pile
@@ -55,6 +66,12 @@ open import Lib
       | v ∙ π                (valeur sur pile)
 -}
 
+data pile : Set where
+  ε   :                          pile
+  _∙_ : (v : valeur)(π : pile) → pile
+
+infixr 5 _∙_
+
 {-
   c₁, c₂ ::=                 (machine à pile)
            | SKIP
@@ -64,17 +81,36 @@ open import Lib
            | c₁ # c₂         (séquence)
 -}
 
--- ex₃ = PUSH 1 #
---       PUSH 1 #
---       ADD
+data code : Set where
+  SKIP :                          code
+  PUSH : (v : valeur)           → code
+  ADD  :                          code
+  IFTE : (c₁ : code)(c₂ : code) → code
+  _#_  : (c₁ : code)(c₂ : code) → code
 
--- ex₄ = PUSH 2 #
---       PUSH true #
---       IFTE (PUSH 3)
---            (PUSH 1 # PUSH 7 # ADD) #
---       ADD
+infixr 20 _#_
+
+ex₃ : code
+ex₃ = PUSH (estNat 1) #
+      PUSH (estNat 1) #
+      ADD
+
+ex₄ : code
+ex₄ = PUSH (estNat 2) #
+      PUSH (estBool true) #
+      IFTE (PUSH (estNat 3))
+           (PUSH (estNat 1) # PUSH (estNat 7) # ADD) #
+      ADD
 
 -- --------------------------------
 -- Compilateur
 -- --------------------------------
 
+compile : exp → code
+compile (val v)        = PUSH v
+compile (plus e₁ e₂)   = compile e₂ #
+                         compile e₁ #
+                         ADD
+compile (ifte b e₁ e₂) = compile b #
+                         IFTE (compile e₁)
+                              (compile e₂)
