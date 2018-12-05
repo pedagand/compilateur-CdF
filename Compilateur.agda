@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 open import Lib
 
 -- ================================================================
@@ -182,15 +184,17 @@ rustine : (b : Bool) {v₁ v₂ : valeur T} →
 rustine false = refl
 rustine true  = refl
 
+{-# BUILTIN REWRITE _≡_ #-}
+{-# REWRITE rustine #-}
+
 compile : (e : exp T) → code-semC σ (T ∷ σ) π (semE e ∙ π)
 compile (val v)        = PUSH v
 compile (plus e₁ e₂)   = compile e₂ #
                          compile e₁ #
                          ADD
 compile (ifte b e₁ e₂) = compile b #
-                         subst (code-semC _ _ _ ) (rustine _)
-                               (IFTE (compile e₁)
-                                     (compile e₂))
+                         IFTE (compile e₁)
+                              (compile e₂)
 
 compile' : (π : pile σ) → exp T → code σ (T ∷ σ)
 compile' π e = oubli π (compile e)
