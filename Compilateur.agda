@@ -56,6 +56,29 @@ ex₂ = plus (val (estNat 2))
                  (val (estNat 3))
                  (plus (val (estNat 1)) (val (estNat 7))))
 
+semE : exp → Option valeur
+semE (val v)                          = OK v
+semE (plus e₁ e₂)
+  with semE e₁ | semE e₂
+... | OK (estNat n₁) | OK (estNat n₂) = OK (estNat (n₁ + n₂))
+... | OK (estBool b) | _              = KO
+... | OK (estNat n₁) | OK (estBool b) = KO
+... | OK v           | KO             = KO
+... | KO             | _              = KO
+semE (ifte b e₁ e₂)
+  with semE b | semE e₁ | semE e₂
+... | OK (estBool v) | v₁ | v₂        = if v then v₁ else v₂
+... | _ | _ | _                       = KO
+
+test-ex₁ : semE ex₁ ≡ OK (estNat 2)
+test-ex₁ = refl
+
+-- "The above proposition is occasionally useful."
+--         Whitehead & Russell (PM, vol.II, p.362)
+
+test-ex₂ : semE ex₂ ≡ OK (estNat 5)
+test-ex₂ = refl
+
 -- --------------------------------
 -- Machine à pile
 -- --------------------------------
