@@ -31,9 +31,14 @@ open import Lib
       | 0 | 1 | ...          (entiers naturel)
 -}
 
-data valeur : Set where
-  estNat  : (n : ℕ)    → valeur
-  estBool : (b : Bool) → valeur
+data type : Set where
+   nat bool : type
+
+variable T : type
+
+valeur : type → Set
+valeur nat  = ℕ
+valeur bool = Bool
 
 {-
   b, e₁, e₂ ::=              (expressions)
@@ -42,41 +47,32 @@ data valeur : Set where
               | ifte b e₁ e₂ (conditionnelle)
 -}
 
-data exp : Set where
-  val  : (v : valeur)                  → exp
-  plus : (e₁ : exp)(e₂ : exp)          → exp
-  ifte : (b : exp)(e₁ : exp)(e₂ : exp) → exp
+data exp : type → Set where
+  val  : (v : valeur T)                → exp T
+  plus : (e₁ : exp nat)(e₂ : exp nat)  → exp nat
+  ifte : (b : exp bool)(e₁ e₂ : exp T) → exp T
 
-ex₁ : exp
-ex₁ = plus (val (estNat 1)) (val (estNat 1))
+ex₁ : exp nat
+ex₁ = plus (val 1) (val 1)
 
-ex₂ : exp
-ex₂ = plus (val (estNat 2))
-           (ifte (val (estBool true))
-                 (val (estNat 3))
-                 (plus (val (estNat 1)) (val (estNat 7))))
+ex₂ : exp nat
+ex₂ = plus (val 2)
+           (ifte (val true)
+                 (val 3)
+                 (plus (val 1) (val 7)))
 
-semE : exp → Option valeur
-semE (val v)                          = OK v
-semE (plus e₁ e₂)
-  with semE e₁ | semE e₂
-... | OK (estNat n₁) | OK (estNat n₂) = OK (estNat (n₁ + n₂))
-... | OK (estBool b) | _              = KO
-... | OK (estNat n₁) | OK (estBool b) = KO
-... | OK v           | KO             = KO
-... | KO             | _              = KO
-semE (ifte b e₁ e₂)
-  with semE b | semE e₁ | semE e₂
-... | OK (estBool v) | v₁ | v₂        = if v then v₁ else v₂
-... | _ | _ | _                       = KO
+semE : exp T → valeur T
+semE (val v)        = v
+semE (plus e₁ e₂)   = semE e₁ + semE e₂
+semE (ifte b e₁ e₂) = if semE b then semE e₁ else semE e₂
 
-test-ex₁ : semE ex₁ ≡ OK (estNat 2)
+test-ex₁ : semE ex₁ ≡ 2
 test-ex₁ = refl
 
 -- "The above proposition is occasionally useful."
 --         Whitehead & Russell (PM, vol.II, p.362)
 
-test-ex₂ : semE ex₂ ≡ OK (estNat 5)
+test-ex₂ : semE ex₂ ≡ 5
 test-ex₂ = refl
 
 -- --------------------------------
@@ -89,11 +85,22 @@ test-ex₂ = refl
       | v ∙ π                (valeur sur pile)
 -}
 
-data pile : Set where
-  ε   :                          pile
-  _∙_ : (v : valeur)(π : pile) → pile
+type-pile : Set
+type-pile = List type
+
+variable σ σ₁ σ₂ σ₃ : type-pile
+
+data pile : type-pile → Set where
+  ε   : pile []
+  _∙_ : valeur T → pile σ → pile (T ∷ σ)
 
 infixr 5 _∙_
+
+tete : pile (T ∷ σ) → valeur T
+tete (t ∙ _) = t
+
+queue : pile (T ∷ σ) → pile σ
+queue (_ ∙ s) = s
 
 {-
   c₁, c₂ ::=                 (machine à pile)
@@ -104,32 +111,40 @@ infixr 5 _∙_
            | c₁ # c₂         (séquence)
 -}
 
-data code : Set where
-  SKIP :                          code
-  PUSH : (v : valeur)           → code
-  ADD  :                          code
-  IFTE : (c₁ : code)(c₂ : code) → code
-  _#_  : (c₁ : code)(c₂ : code) → code
+data code : type-pile → type-pile → Set where
+  SKIP :                                      code σ σ
+  PUSH : (v : valeur T)                     → code σ (T ∷ σ)
+  ADD  :                                      code (nat ∷ nat ∷ σ) (nat ∷ σ)
+  IFTE : (c₁ c₂ : code σ₁ σ₂)               → code (bool ∷ σ₁) σ₂
+  _#_  : (c₁ : code σ₁ σ₂)(c₂ : code σ₂ σ₃) → code σ₁ σ₃
 
 infixr 20 _#_
 
-ex₃ : code
-ex₃ = PUSH (estNat 1) #
-      PUSH (estNat 1) #
+ex₃ : code [] (nat ∷ [])
+ex₃ = PUSH 1 #
+      PUSH 1 #
       ADD
 
-ex₄ : code
-ex₄ = PUSH (estNat 2) #
-      PUSH (estBool true) #
-      IFTE (PUSH (estNat 3))
-           (PUSH (estNat 1) # PUSH (estNat 7) # ADD) #
+ex₄ : code [] (nat ∷ [])
+ex₄ = PUSH 2 #
+      PUSH true #
+      IFTE (PUSH 3)
+           (PUSH 1 # PUSH 7 # ADD) #
       ADD
+
+semC : code σ₁ σ₂ → pile σ₁ → pile σ₂
+semC SKIP π                   = π
+semC (PUSH v) π               = v ∙ π
+semC ADD (m ∙ n ∙ π)          = m + n ∙ π
+semC (IFTE c₁ c₂) (true ∙ π)  = semC c₁ π
+semC (IFTE c₁ c₂) (false ∙ π) = semC c₂ π
+semC (c₁ # c₂) π              = semC c₂ (semC c₁ π)
 
 -- --------------------------------
 -- Compilateur
 -- --------------------------------
 
-compile : exp → code
+compile : exp T → code σ (T ∷ σ)
 compile (val v)        = PUSH v
 compile (plus e₁ e₂)   = compile e₂ #
                          compile e₁ #
@@ -137,3 +152,14 @@ compile (plus e₁ e₂)   = compile e₂ #
 compile (ifte b e₁ e₂) = compile b #
                          IFTE (compile e₁)
                               (compile e₂)
+
+correction : (e : exp T)(π : pile σ) → semC (compile e) π ≡ semE e ∙ π
+correction (val v) π                  = refl
+correction (plus e₁ e₂) π
+  rewrite correction e₂ π
+        | correction e₁ (semE e₂ ∙ π) = refl
+correction (ifte b e₁ e₂) π
+  rewrite correction b π
+  with semE b
+... | true                            = correction e₁ π
+... | false                           = correction e₂ π
