@@ -40,6 +40,9 @@ valeur : type → Set
 valeur nat  = ℕ
 valeur bool = Bool
 
+variable m n : valeur nat
+variable b : valeur bool
+
 {-
   b, e₁, e₂ ::=              (expressions)
               | v            (valeur)
@@ -96,6 +99,8 @@ data pile : type-pile → Set where
 
 infixr 5 _∙_
 
+variable π π₁ π₂ π₃ : pile _
+
 tete : pile (T ∷ σ) → valeur T
 tete (t ∙ _) = t
 
@@ -140,26 +145,55 @@ semC (IFTE c₁ c₂) (true ∙ π)  = semC c₁ π
 semC (IFTE c₁ c₂) (false ∙ π) = semC c₂ π
 semC (c₁ # c₂) π              = semC c₂ (semC c₁ π)
 
+data code-semC : (σ₁ σ₂ : type-pile) → pile σ₁ → pile σ₂ → Set where
+  SKIP : code-semC σ σ π π
+  PUSH : (v : valeur T) →
+         code-semC σ (T ∷ σ) π (v ∙ π)
+  ADD  : code-semC (nat ∷ nat ∷ σ) (nat ∷ σ) (m ∙ n ∙ π) (m + n ∙ π)
+  IFTE : (c₁ : code-semC σ₁ σ₂ π π₁) →
+         (c₂ : code-semC σ₁ σ₂ π π₂) →
+         code-semC (bool ∷ σ₁) σ₂ (b ∙ π) (if b then π₁ else π₂)
+  _#_ : (c₁ : code-semC σ₁ σ₂ π₁ π₂)
+        (c₂ : code-semC σ₂ σ₃ π₂ π₃) →
+        code-semC σ₁ σ₃ π₁ π₃
+
+oubli : (π₁ : pile σ₁) → code-semC σ₁ σ₂ π₁ π₂ → code σ₁ σ₂
+oubli π₁ SKIP         = SKIP
+oubli π₁ (PUSH v)     = PUSH v
+oubli π₁ ADD          = ADD
+oubli π₁ (IFTE c₁ c₂) = IFTE (oubli _ c₁) (oubli _ c₂)
+oubli π₁ (c₁ # c₂)    = oubli _ c₁ # oubli _ c₂
+
+valide : (c : code-semC σ₁ σ₂ π₁ π₂) → semC (oubli π₁ c) π₁ ≡ π₂
+valide SKIP                     = refl
+valide (PUSH v)                 = refl
+valide ADD                      = refl
+valide (IFTE {b = true} c₁ c₂)  = valide c₁
+valide (IFTE {b = false} c₁ c₂) = valide c₂
+valide (c₁ # c₂)
+  rewrite valide c₁ | valide c₂  = refl
+
 -- --------------------------------
 -- Compilateur
 -- --------------------------------
 
-compile : exp T → code σ (T ∷ σ)
+rustine : (b : Bool) {v₁ v₂ : valeur T} →
+     if b then (v₁ ∙ π) else (v₂ ∙ π) ≡ (if b then v₁ else v₂) ∙ π
+rustine false = refl
+rustine true  = refl
+
+compile : (e : exp T) → code-semC σ (T ∷ σ) π (semE e ∙ π)
 compile (val v)        = PUSH v
 compile (plus e₁ e₂)   = compile e₂ #
                          compile e₁ #
                          ADD
 compile (ifte b e₁ e₂) = compile b #
-                         IFTE (compile e₁)
-                              (compile e₂)
+                         subst (code-semC _ _ _ ) (rustine _)
+                               (IFTE (compile e₁)
+                                     (compile e₂))
 
-correction : (e : exp T)(π : pile σ) → semC (compile e) π ≡ semE e ∙ π
-correction (val v) π                  = refl
-correction (plus e₁ e₂) π
-  rewrite correction e₂ π
-        | correction e₁ (semE e₂ ∙ π) = refl
-correction (ifte b e₁ e₂) π
-  rewrite correction b π
-  with semE b
-... | true                            = correction e₁ π
-... | false                           = correction e₂ π
+compile' : (π : pile σ) → exp T → code σ (T ∷ σ)
+compile' π e = oubli π (compile e)
+
+correction : (e : exp T)(π : pile σ) → semC (compile' π e) π ≡ semE e ∙ π
+correction e π = valide (compile e)
